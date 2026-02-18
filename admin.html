@@ -23,16 +23,13 @@
         .user-card { background: #2d3748; padding: 15px; border-radius: 12px; margin-bottom: 12px; cursor: pointer; border: 1px solid transparent; transition: 0.3s; position: relative; }
         .user-card:hover { border-color: #63b3ed; background: #3a4a63; }
         
-        .battery-tag { font-weight: bold; font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #234e33; color: #48bb78; }
-        .battery-low { background: #742a2a; color: #f56565; animation: blink 1s infinite; }
-        
-        .delete-user { position: absolute; top: 10px; right: 10px; color: #a0aec0; font-size: 18px; cursor: pointer; }
+        .battery-tag { font-weight: bold; font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #234e33; color: #48bb78; float: right; }
+        .delete-user { position: absolute; top: 10px; right: 10px; color: #a0aec0; font-size: 18px; cursor: pointer; z-index: 10; }
         .delete-user:hover { color: #f56565; }
 
         .sos-alert { border: 2px solid #f56565 !important; background: #4a1d1d !important; animation: shake 0.5s infinite; }
         .geofence-alert { border: 2px solid #f6e05e !important; }
         
-        @keyframes blink { 50% { opacity: 0.5; } }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(5px); } 75% { transform: translateX(-5px); } }
         
         .last-seen { font-size: 11px; color: #cbd5e0; margin-top: 8px; display: block; }
@@ -48,7 +45,7 @@
     <button class="btn-main" onclick="clearAllPaths()">🧹 Clear All Map Lines</button>
     <p style="font-size: 11px; color: #a0aec0;">Safe Zone: 1 KM Radius</p>
     <hr style="border: 0; border-top: 1px solid #2d3748; margin: 15px 0;">
-    <div id="user-list">Fetching family members...</div>
+    <div id="user-list">Fetching users...</div>
 </div>
 <div id="map"></div>
 
@@ -66,21 +63,16 @@
 
     let map, markers = {}, paths = {}, userAlerts = new Set();
     
-    // --- GEOFENCE SETTINGS ---
-    const HOME_LAT = 28.6139; // Apna Home Lat dalein
-    const HOME_LNG = 77.2090; // Apna Home Lng dalein
-    const SAFE_RADIUS = 1000; // 1000 meters = 1 KM
+    const HOME_LAT = 28.6139; 
+    const HOME_LNG = 77.2090; 
+    const SAFE_RADIUS = 1000; 
 
     function initMap() {
         map = L.map('map').setView([HOME_LAT, HOME_LNG], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Safe Zone Circle on Map
         L.circle([HOME_LAT, HOME_LNG], {
             color: '#48bb78',
-            fillColor: '#48bb78',
             fillOpacity: 0.1,
             radius: SAFE_RADIUS
         }).addTo(map);
@@ -89,61 +81,56 @@
         listenToAlerts();
     }
 
-    // Distance calculate karne ka formula
     function getDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000; // Radius of earth in meters
+        const R = 6371000;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                   Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     function listenToLocations() {
-    // Ye real-time listener hai jo bina page refresh kiye data lega
-    db.collection("locations").onSnapshot(snapshot => {
-        const listDiv = document.getElementById('user-list');
-        listDiv.innerHTML = ''; // Pehle list saaf karein
+        db.collection("locations").onSnapshot(snapshot => {
+            const listDiv = document.getElementById('user-list');
+            listDiv.innerHTML = '';
 
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const name = data.userName || doc.id; // User ka naam
-            
-            // Check karein ki data mil raha hai ya nahi
-            if (data.lat && data.lng) {
-                const lat = parseFloat(data.lat);
-                const lng = parseFloat(data.lng);
-                const battery = data.battery || 0;
-                const pos = [lat, lng];
-
-                // 1. Sidebar Card Update
-                listDiv.innerHTML += `
-                    <div class="user-card" onclick="map.setView([${lat}, ${lng}], 16)">
-                        <strong>${name}</strong>
-                        <span class="battery-tag">🔋 ${battery}%</span>
-                        <p style="font-size:10px; color:#a0aec0; margin:5px 0 0;">
-                            Lat: ${lat.toFixed(4)} | Lng: ${lng.toFixed(4)}
-                        </p>
-                    </div>
-                `;
-
-                // 2. Real-time Marker Update
-                if (markers[name]) {
-                    markers[name].setLatLng(pos); // Marker ko bina delete kiye move karega
-                } else {
-                    markers[name] = L.marker(pos).addTo(map).bindTooltip(name, {permanent: true});
-                    paths[name] = L.polyline([], {color: '#63b3ed'}).addTo(map);
-                }
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const name = data.userName || doc.id;
                 
-                // Path line update
-                paths[name].addLatLng(pos);
-            }
+                if (data.lat && data.lng) {
+                    const lat = parseFloat(data.lat);
+                    const lng = parseFloat(data.lng);
+                    const battery = data.battery || 0;
+                    const pos = [lat, lng];
+                    
+                    const distance = getDistance(HOME_LAT, HOME_LNG, lat, lng);
+                    const isOutside = distance > SAFE_RADIUS;
+                    const isSOS = userAlerts.has(name);
+
+                    listDiv.innerHTML += `
+                        <div class="user-card ${isSOS ? 'sos-alert' : (isOutside ? 'geofence-alert' : '')}" onclick="map.setView([${lat}, ${lng}], 16)">
+                            <span class="delete-user" onclick="deleteUser('${doc.id}', event)">×</span>
+                            <strong>${name}</strong>
+                            <span class="battery-tag">🔋 ${battery}%</span>
+                            <span class="last-seen">🕒 ${data.lastUpdate ? data.lastUpdate.toDate().toLocaleTimeString() : 'Live'}</span>
+                            ${isOutside ? `<div class="zone-status">⚠️ Outside Zone (${(distance/1000).toFixed(2)}km)</div>` : ''}
+                        </div>
+                    `;
+
+                    if (markers[name]) {
+                        markers[name].setLatLng(pos);
+                    } else {
+                        markers[name] = L.marker(pos).addTo(map).bindTooltip(name, {permanent: true});
+                        paths[name] = L.polyline([], {color: getRandomColor(), weight: 4}).addTo(map);
+                    }
+                    paths[name].addLatLng(pos);
+                }
+            });
         });
-    }, err => {
-        console.error("Firebase Error: ", err);
-    });
-}
+    }
+
     function listenToAlerts() {
         db.collection("alerts").where("timestamp", ">", new Date(Date.now() - 60000))
         .onSnapshot(snapshot => {
@@ -156,25 +143,23 @@
         });
     }
 
-    function focusUser(lat, lng) { map.setView([lat, lng], 16); }
-
     function clearAllPaths() {
         for (let key in paths) { paths[key].setLatLngs([]); }
-        alert("Map history cleared!");
+        alert("Lines cleared!");
     }
 
-    function deleteUser(name, event) {
+    function deleteUser(id, event) {
         event.stopPropagation();
-        if(confirm(`Delete ${name}?`)) {
-            db.collection("locations").doc(name).delete();
-            if(markers[name]) map.removeLayer(markers[name]);
-            if(paths[name]) map.removeLayer(paths[name]);
-            delete markers[name]; delete paths[name];
+        if(confirm(`Delete ${id}?`)) {
+            db.collection("locations").doc(id).delete();
+            if(markers[id]) map.removeLayer(markers[id]);
+            if(paths[id]) map.removeLayer(paths[id]);
+            delete markers[id]; delete paths[id];
         }
     }
 
     function getRandomColor() {
-        const colors = ['#63b3ed', '#f6ad55', '#68d391', '#f687b3', '#9f7aea', '#4fd1c5'];
+        const colors = ['#63b3ed', '#f6ad55', '#68d391', '#f687b3', '#9f7aea'];
         return colors[Math.floor(Math.random() * colors.length)];
     }
 

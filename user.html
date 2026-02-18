@@ -52,23 +52,15 @@
     let user_id = "";
 
     // 1. Function to send data to Firebase
-    async function updateFirebase(lat, lng) {
-        let batLevel = 0;
-        try {
-            const battery = await navigator.getBattery();
-            batLevel = Math.floor(battery.level * 100);
-            document.getElementById('bat-info').innerText = `Battery: ${batLevel}% 🔋`;
-        } catch(e) {}
-
-        db.collection("locations").doc(user_id).set({
-            userName: user_id,
-            lat: parseFloat(lat),
-            lng: parseFloat(lng),
-            battery: batLevel,
-            lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-    }
-
+    // User side par ye function check karein
+async function updateFirebase(lat, lng) {
+    db.collection("locations").doc(user_id).set({
+        userName: user_id,
+        lat: Number(lat), // Force Number conversion
+        lng: Number(lng), // Force Number conversion
+        lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+}
     // 2. Main Tracking Function
    function startTracking() {
     const nameInput = document.getElementById('userName').value.trim();
