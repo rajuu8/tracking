@@ -7,24 +7,35 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
-        body { font-family: sans-serif; background: #1a202c; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #2d3748; padding: 30px; border-radius: 20px; text-align: center; width: 90%; max-width: 350px; }
-        input { width: 100%; padding: 12px; margin: 15px 0; border-radius: 10px; border: none; font-size: 16px; box-sizing: border-box; }
-        .btn { background: #3182ce; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; cursor: pointer; font-weight: bold; }
-        .status { margin-top: 15px; color: #68d391; font-size: 14px; display: none; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a202c; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #2d3748; padding: 30px; border-radius: 20px; text-align: center; width: 90%; max-width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #4a5568; }
+        input { width: 100%; padding: 12px; margin: 15px 0; border-radius: 10px; border: 1px solid #4a5568; font-size: 16px; box-sizing: border-box; background: #1a202c; color: white; outline: none; }
+        input:focus { border-color: #38a169; }
+        .btn { background: #38a169; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; }
+        .btn:hover { background: #2f855a; }
+        .status { margin-top: 15px; color: #68d391; font-size: 14px; display: none; font-weight: bold; }
+        #bat-val { font-size: 18px; margin-top: 10px; color: #cbd5e0; }
+        .warning { font-size: 12px; color: #f56565; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
+
+    <audio id="startSnd" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
+
     <div class="card">
-        <h2>User Panel 📍</h2>
+        <h2 style="color: #63b3ed; margin-top: 0;">Target Panel 📍</h2>
         <div id="setup">
-            <input type="text" id="userName" placeholder="Apna Naam Likhein">
-            <button class="btn" onclick="startTracking()">Start Sharing</button>
+            <input type="text" id="userName" placeholder="Apna Naam Likhein...">
+            <button class="btn" onclick="startTracking()">Start Live Sharing</button>
+            <p style="font-size: 11px; color: #a0aec0; margin-top: 10px;">GPS aur Internet On Rakhein</p>
         </div>
+        
         <div id="active" style="display:none;">
-            <h3 id="name-tag"></h3>
-            <div class="status" id="status-box">✅ System Live & Fast Sync On</div>
-            <p id="bat-val">Battery: --%</p>
+            <h3 id="name-tag" style="margin-bottom: 5px;"></h3>
+            <div class="status" id="status-box">🟢 System Live & Syncing...</div>
+            <p id="bat-val">Battery: --% 🔋</p>
+            <p style="font-size: 12px; color: #a0aec0;">Is page ko band mat karein</p>
+            <div id="gps-error" class="warning">⚠️ GPS Blocked! Setting se Allow karein.</div>
         </div>
     </div>
 
@@ -39,11 +50,17 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
+
     let current_id = "";
 
     async function pushData(lat, lng) {
         let bat = 0;
-        try { const b = await navigator.getBattery(); bat = Math.floor(b.level * 100); } catch(e) {}
+        try { 
+            const b = await navigator.getBattery(); 
+            bat = Math.floor(b.level * 100); 
+        } catch(e) {}
+        
         document.getElementById('bat-val').innerText = `Battery: ${bat}% 🔋`;
 
         db.collection("locations").doc(current_id).set({
@@ -52,13 +69,22 @@
             lng: Number(lng),
             battery: bat,
             lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        }, { merge: true }).then(() => {
+            console.log("Data Sent!");
+        }).catch(err => {
+            console.error("Firebase Error:", err);
+            // Agar yahan error aaye toh sathi ko bolo Rules check karein
+        });
     }
 
     function startTracking() {
         const n = document.getElementById('userName').value.trim();
-        if(!n) return alert("Naam likho!");
+        if(!n) return alert("Bhai, naam toh likho!");
+        
         current_id = n;
+        
+        // Play sound
+        document.getElementById('startSnd').play().catch(e => {});
 
         document.getElementById('setup').style.display = 'none';
         document.getElementById('active').style.display = 'block';
@@ -66,14 +92,30 @@
         document.getElementById('name-tag').innerText = "Hi, " + n;
 
         if (navigator.geolocation) {
-            // Immediate
-            navigator.geolocation.getCurrentPosition(p => pushData(p.coords.latitude, p.coords.longitude));
-            // Watch
-            navigator.geolocation.watchPosition(p => pushData(p.coords.latitude, p.coords.longitude), null, {enableHighAccuracy:true});
-            // 5s Force Sync
+            // Success function
+            const success = (p) => {
+                document.getElementById('gps-error').style.display = 'none';
+                pushData(p.coords.latitude, p.coords.longitude);
+            };
+
+            // Error function
+            const error = (err) => {
+                document.getElementById('gps-error').style.display = 'block';
+                console.log("GPS Error:", err);
+            };
+
+            const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+
+            // Real-time Watch
+            navigator.geolocation.watchPosition(success, error, options);
+
+            // Force Sync every 5 seconds (Extra Safety)
             setInterval(() => {
-                navigator.geolocation.getCurrentPosition(p => pushData(p.coords.latitude, p.coords.longitude));
+                navigator.geolocation.getCurrentPosition(success, error, options);
             }, 5000);
+
+        } else {
+            alert("Aapka phone GPS support nahi karta!");
         }
     }
 </script>
