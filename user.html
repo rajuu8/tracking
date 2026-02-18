@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Panel - High Performance</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1a202c; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #2d3748; padding: 30px; border-radius: 24px; box-shadow: 0 20px 25px rgba(0,0,0,0.5); text-align: center; width: 85%; max-width: 400px; border: 1px solid #4a5568; }
+        h2 { color: #63b3ed; margin-bottom: 10px; }
+        input { width: 100%; padding: 15px; margin: 20px 0; border-radius: 12px; border: none; background: #1a202c; color: white; font-size: 16px; text-align: center; }
+        .btn { background: #3182ce; color: white; border: none; padding: 15px; border-radius: 12px; width: 100%; font-weight: bold; font-size: 18px; cursor: pointer; transition: 0.3s; }
+        .btn:hover { background: #4299e1; }
+        .btn-sos { background: #e53e3e; margin-top: 15px; }
+        .status { margin-top: 20px; padding: 10px; border-radius: 10px; background: #22543d; color: #81e6d9; font-size: 14px; display: none; }
+        .battery-info { font-size: 12px; color: #a0aec0; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Family Tracker 📍</h2>
+    <div id="setup-ui">
+        <p style="color: #a0aec0;">Apna naam likh kar start karein</p>
+        <input type="text" id="userName" placeholder="Apna Naam...">
+        <button class="btn" onclick="startTracking()">🚀 Start Sharing Live</button>
+    </div>
+
+    <div id="active-ui" style="display:none;">
+        <h3 id="display-name" style="margin-bottom:5px;"></h3>
+        <div id="status-box" class="status">🛰️ System Online & Tracking...</div>
+        <div id="bat-info" class="battery-info">Battery: --%</div>
+        <button class="btn btn-sos" onclick="sendSOS()">🚨 SEND SOS ALERT</button>
+        <p style="font-size: 10px; color: #718096; margin-top: 20px;">Kripya is tab ko band na karein.</p>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCZz90P8npkRcL0ZctIelDFbKRN48BsZzk",
+        authDomain: "tracking-7494e.firebaseapp.com",
+        projectId: "tracking-7494e",
+        storageBucket: "tracking-7494e.firebasestorage.app",
+        messagingSenderId: "861816870090",
+        appId: "1:861816870090:web:4dec49659b3806fcd49033"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let user_id = "";
+
+    // 1. Function to send data to Firebase
+    async function updateFirebase(lat, lng) {
+        let batLevel = 0;
+        try {
+            const battery = await navigator.getBattery();
+            batLevel = Math.floor(battery.level * 100);
+            document.getElementById('bat-info').innerText = `Battery: ${batLevel}% 🔋`;
+        } catch(e) {}
+
+        db.collection("locations").doc(user_id).set({
+            userName: user_id,
+            lat: parseFloat(lat),
+            lng: parseFloat(lng),
+            battery: batLevel,
+            lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    }
+
+    // 2. Main Tracking Function
+   function startTracking() {
+    const nameInput = document.getElementById('userName').value.trim();
+    if(!nameInput) return alert("Pehle apna naam likho!");
+
+    user_id = nameInput;
+    localStorage.setItem('tracker_name', user_id);
+
+    // UI badalne ke liye
+    document.getElementById('setup-ui').style.display = 'none';
+    document.getElementById('active-ui').style.display = 'block';
+    document.getElementById('status-box').style.display = 'block';
+    document.getElementById('display-name').innerText = "Tracking: " + user_id;
+
+    if (navigator.geolocation) {
+        
+        // 1. TURANT UPDATE (Jaise hi button dabe)
+        navigator.geolocation.getCurrentPosition(pos => {
+            updateFirebase(pos.coords.latitude, pos.coords.longitude);
+        }, err => console.error("Initial Error:", err), { enableHighAccuracy: true });
+
+        // 2. REAL-TIME WATCH (Jaise hi user 1 kadam bhi hilega, Admin ko dikhega)
+        navigator.geolocation.watchPosition(pos => {
+            updateFirebase(pos.coords.latitude, pos.coords.longitude);
+        }, err => console.error("Watch Error:", err), { 
+            enableHighAccuracy: true, 
+            maximumAge: 0, 
+            timeout: 5000 
+        });
+
+        // 3. FORCE REFRESH (Har 5 second mein data bhejega chahe user khada ho)
+        // Isse Admin Panel par "Last Seen" aur "Battery" hamesha fresh rahegi
+        setInterval(() => {
+            navigator.geolocation.getCurrentPosition(pos => {
+                updateFirebase(pos.coords.latitude, pos.coords.longitude);
+                console.log("Forced 5s Sync Done");
+            }, err => console.error("Interval Error:", err), { 
+                enableHighAccuracy: true 
+            });
+        }, 5000); 
+
+    } else {
+        alert("Aapka browser location support nahi karta!");
+    }
+}
+    function sendSOS() {
+        db.collection("alerts").add({
+            userName: user_id,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }).then(() => alert("🚨 SOS Bhej Diya Gaya Hai!"));
+    }
+
+    // Auto-login agar naam pehle se saved hai
+    window.onload = () => {
+        const saved = localStorage.getItem('tracker_name');
+        if(saved) {
+            document.getElementById('userName').value = saved;
+            // startTracking(); // Isko auto-start nahi rakha taaki user click karke permission de sake
+        }
+    }
+</script>
+</body>
+</html>
